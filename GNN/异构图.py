@@ -1,5 +1,4 @@
-
-
+import dgl
 import numpy as np
 import torch
 
@@ -36,3 +35,33 @@ hetero_graph.nodes['user'].data['train_mask'] = torch.zeros(n_users, dtype=torch
 hetero_graph.edges['click'].data['train_mask'] = torch.zeros(n_clicks, dtype=torch.bool).bernoulli(0.6)
 
 # print(hetero_graph)
+
+# Define a Heterograph Conv model
+
+import dgl.nn as dglnn
+import torch.nn as nn
+import torch.nn.functional as F
+
+class RGCN(nn.Module):
+    def __init__(self, in_feats, hid_feats, out_feats, rel_names):
+        super().__init__()
+        # 实例化HeteroGraphConv，in_feats是输入特征的维度，out_feats是输出特征的维度，aggregate是聚合函数的类型
+        self.conv1 = dglnn.HeteroGraphConv({
+            rel: dglnn.GraphConv(in_feats, hid_feats)
+            for rel in rel_names}, aggregate='sum')
+        self.conv2 = dglnn.HeteroGraphConv({
+            rel: dglnn.GraphConv(hid_feats, out_feats)
+            for rel in rel_names}, aggregate='sum')
+
+    def forward(self, graph, inputs):
+        # 输入是节点的特征字典
+        h = self.conv1(graph, inputs)
+        h = {k: F.relu(v) for k, v in h.items()}
+        h = self.conv2(graph, h)
+        return h
+
+model = RGCN(n_hetero_features, 20, n_user_classes, hetero_graph.etypes)
+user_feats = hetero_graph.nodes['user'].data['feature']
+item_feats = hetero_graph.nodes['item'].data['feature']
+labels = hetero_graph.nodes['user'].data['label']
+train_mask = hetero_graph.nodes['user'].data['train_mask']
