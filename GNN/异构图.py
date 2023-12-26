@@ -65,3 +65,25 @@ user_feats = hetero_graph.nodes['user'].data['feature']
 item_feats = hetero_graph.nodes['item'].data['feature']
 labels = hetero_graph.nodes['user'].data['label']
 train_mask = hetero_graph.nodes['user'].data['train_mask']
+
+node_features = {'user': user_feats, 'item': item_feats}
+h_dict = model(hetero_graph, {'user': user_feats, 'item': item_feats})
+h_user = h_dict['user']
+h_item = h_dict['item']
+
+opt = torch.optim.Adam(model.parameters())
+
+for epoch in range(5):
+    model.train()
+    # 使用所有节点的特征进行前向传播计算，并提取输出的user节点嵌入
+    logits = model(hetero_graph, node_features)['user']
+    # 计算损失值
+    loss = F.cross_entropy(logits[train_mask], labels[train_mask])
+    # 计算验证集的准确度。在本例中省略。
+    # 进行反向传播计算
+    opt.zero_grad()
+    loss.backward()
+    opt.step()
+    print(loss.item())
+
+    # 如果需要的话，保存训练好的模型。本例中省略。
