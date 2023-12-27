@@ -46,7 +46,7 @@ model = SAGE(in_feats=n_features, hid_feats=100, out_feats=n_labels)
 print(graph)
 opt = torch.optim.Adam(model.parameters())
 
-for epoch in range(100):
+for epoch in range(10):
     model.train()
     # 使用所有节点(全图)进行前向传播计算
     logits = model(graph, node_features)
