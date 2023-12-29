@@ -70,3 +70,19 @@ for epoch in range(10):
 
 node_embeddings = model.sage(graph, node_features)
 print(node_embeddings)
+
+import torch.nn.functional as F
+
+# Example: Predicting connection probability between nodes i and j
+i, j = 0, 1
+with graph.local_scope():
+    h_i = model.sage(graph, node_features)[i]
+    h_j = model.sage(graph, node_features)[j]
+
+    # Dot product operation
+    connection_score = torch.dot(h_i, h_j)
+
+    # Apply sigmoid activation to get probability
+    connection_probability = torch.sigmoid(connection_score)
+    print(f"Connection probability between nodes {i} and {j}: {connection_probability.item()}")
+
