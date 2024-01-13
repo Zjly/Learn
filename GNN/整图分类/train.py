@@ -154,7 +154,7 @@ if __name__ == "__main__":
     train_loader = GraphDataLoader(
         dataset,
         sampler=SubsetRandomSampler(train_idx),
-        batch_size=128,
+        batch_size=2,
         pin_memory=torch.cuda.is_available(),
     )
     val_loader = GraphDataLoader(
