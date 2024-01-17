@@ -24,6 +24,7 @@ from dgl.nn.pytorch.glob import SumPooling
 from sklearn.model_selection import StratifiedKFold
 from torch.utils.data.sampler import SubsetRandomSampler
 
+
 class MLP(nn.Module):
     """Construct two-layer MLP-type aggreator for GIN model"""
 
@@ -46,7 +47,7 @@ class GIN(nn.Module):
         super().__init__()
         self.ginlayers = nn.ModuleList()
         self.batch_norms = nn.ModuleList()
-        num_layers = 5
+        num_layers = 2
         # five-layer GCN with two-layer MLP aggregator and sum-neighbor-pooling scheme
         for layer in range(num_layers - 1):  # excluding the input layer
             if layer == 0:
@@ -84,8 +85,9 @@ class GIN(nn.Module):
             score_over_layer += self.drop(self.linear_prediction[i](pooled_h))
         return score_over_layer
 
+
 def create_graph():
-    df = pd.read_feather('dataset_100.feather')
+    df = pd.read_feather('dataset_10000.feather')
     api_count = 13053
     hidden_size = 768
     feature = torch.randn(api_count, hidden_size)
@@ -132,7 +134,7 @@ def create_graph():
 
     train_loader = GraphDataLoader(
         api_dataset,
-        batch_size=8,
+        batch_size=16,
         pin_memory=torch.cuda.is_available(),
     )
 
@@ -147,7 +149,7 @@ def train(train_loader, device, model):
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5)
 
     # training loop
-    for epoch in range(350):
+    for epoch in range(50):
         model.train()
         total_loss = 0
         for batch, (batched_graph, labels) in enumerate(train_loader):
@@ -160,8 +162,10 @@ def train(train_loader, device, model):
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
+            print("epoch " + str(epoch + 1) + ", batch: " + str(batch + 1) + ", loss: " + str(total_loss / (batch + 1)))
         scheduler.step()
-        print(total_loss / (batch + 1))
+        print("------------------------------------------------------------------------")
+        print("epoch " + str(epoch + 1) + ", loss: " + str(total_loss / (batch + 1)))
 
 
 class APIDataset(DGLDataset):
