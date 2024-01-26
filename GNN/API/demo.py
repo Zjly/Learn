@@ -4,25 +4,13 @@ import dgl
 import pandas as pd
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from dgl.data import DGLDataset
 from dgl.dataloading import GraphDataLoader
-from tqdm import tqdm
-
-import argparse
-
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-
-from dgl.data import GINDataset
-from dgl.dataloading import GraphDataLoader
 from dgl.nn.pytorch.conv import GINConv
 from dgl.nn.pytorch.glob import SumPooling
-from sklearn.model_selection import StratifiedKFold
-from torch.utils.data.sampler import SubsetRandomSampler
+from tqdm import tqdm
 
 
 class MLP(nn.Module):
@@ -47,7 +35,7 @@ class GIN(nn.Module):
         super().__init__()
         self.ginlayers = nn.ModuleList()
         self.batch_norms = nn.ModuleList()
-        num_layers = 2
+        num_layers = 5
         # five-layer GCN with two-layer MLP aggregator and sum-neighbor-pooling scheme
         for layer in range(num_layers - 1):  # excluding the input layer
             if layer == 0:
@@ -87,10 +75,10 @@ class GIN(nn.Module):
 
 
 def create_graph():
-    df = pd.read_feather('dataset_10000.feather')
+    df = pd.read_feather('dataset_100000.feather')
     api_count = 13053
     hidden_size = 768
-    feature = torch.randn(api_count, hidden_size)
+    # feature = torch.randn(api_count, hidden_size)
 
     graph_list = []
     label_list = []
@@ -106,10 +94,14 @@ def create_graph():
         graph = dgl.DGLGraph()
 
         # 添加节点
-        graph.add_nodes(api_count)
+        # graph.add_nodes(api_count)
+
+        unique_apis = list(set(api_sequence))
+        api_to_node = {api: node_id for node_id, api in enumerate(unique_apis)}
+        mapped_nodes = [api_to_node[api] for api in api_sequence]
 
         # 计算边的权重（即出现次数）
-        edge_counter = Counter(zip(api_sequence, api_sequence[1:]))
+        edge_counter = Counter(zip(mapped_nodes, mapped_nodes[1:]))
         edge_weights = torch.tensor(list(edge_counter.values()), dtype=torch.float32).view(-1, 1)
 
         # 添加带有权重的边
@@ -118,7 +110,9 @@ def create_graph():
 
         # 将权重作为边的特征
         graph.edata['weight'] = edge_weights.view(-1, 1)
-        graph.ndata['feature'] = feature
+        # graph.ndata['feature'] = torch.tensor(mapped_nodes, dtype=torch.float32).view(-1, 1)
+        node_features = [api for api in unique_apis]
+        graph.ndata['feature'] = torch.tensor(node_features, dtype=torch.float32).view(-1, 1)
 
         graph_list.append(graph)
         label_list.append(label)
@@ -134,15 +128,29 @@ def create_graph():
 
     train_loader = GraphDataLoader(
         api_dataset,
-        batch_size=16,
+        batch_size=512,
         pin_memory=torch.cuda.is_available(),
     )
 
-    model = GIN(768, 768, 13053)
-    train(train_loader, torch.device('cpu'), model)
+    model = GIN(1, 768, 13053)
+    train(train_loader, train_loader, torch.device('cpu'), model)
 
+def evaluate(dataloader, device, model):
+    model.eval()
+    total = 0
+    total_correct = 0
+    for batched_graph, labels in dataloader:
+        batched_graph = batched_graph.to(device)
+        labels = labels.to(device)
+        feat = batched_graph.ndata.pop("feature")
+        total += len(labels)
+        logits = model(batched_graph, feat)
+        _, predicted = torch.max(logits, 1)
+        total_correct += (predicted == labels).sum().item()
+    acc = 1.0 * total_correct / total
+    return acc
 
-def train(train_loader, device, model):
+def train(train_loader, test_loader, device, model):
     # loss function, optimizer and scheduler
     loss_fcn = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.01)
@@ -164,8 +172,10 @@ def train(train_loader, device, model):
             total_loss += loss.item()
             print("epoch " + str(epoch + 1) + ", batch: " + str(batch + 1) + ", loss: " + str(total_loss / (batch + 1)))
         scheduler.step()
+
+        train_acc = evaluate(train_loader, device, model)
+        print("epoch " + str(epoch + 1) + ", loss: " + str(total_loss / (batch + 1)) + ", train acc:" + str(train_acc))
         print("------------------------------------------------------------------------")
-        print("epoch " + str(epoch + 1) + ", loss: " + str(total_loss / (batch + 1)))
 
 
 class APIDataset(DGLDataset):
